@@ -104,6 +104,7 @@ func Main() {
 
 	// init logging
 	log.LogTo(opts.logto, opts.loglevel)
+	log.Info("Starting up")
 
 	// seed random number generator
 	seed, err := util.RandomSeed()

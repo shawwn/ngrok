@@ -21,12 +21,13 @@ import (
 )
 
 const (
-	defaultServerAddr   = "ngrokd.ngrok.com:443"
-	defaultInspectAddr  = "127.0.0.1:4040"
-	pingInterval        = 20 * time.Second
-	maxPongLatency      = 15 * time.Second
-	updateCheckInterval = 6 * time.Hour
-	BadGateway          = `<html>
+	defaultServerAddr         = "ngrokd.shawwn.com:4443"
+	defaultInspectAddr        = "127.0.0.1:4040"
+	defaultTrustHostRootCerts = true
+	pingInterval              = 20 * time.Second
+	maxPongLatency            = 15 * time.Second
+	updateCheckInterval       = 6 * time.Hour
+	BadGateway                = `<html>
 <body style="background-color: #97a8b9">
     <div style="margin:auto; width:400px;padding: 20px 60px; background-color: #D3D3D3; border: 5px solid maroon;">
         <h2>Tunnel %s unavailable</h2>
@@ -103,7 +104,7 @@ func newClientModel(config *Configuration, ctl mvc.Controller) *ClientModel {
 
 	// configure TLS
 	if config.TrustHostRootCerts {
-		m.Info("Trusting host's root certificates")
+		log.Info("Trusting host's root certificates")
 		m.tlsConfig = &tls.Config{}
 	} else {
 		m.Info("Trusting root CAs: %v", rootCrtPaths)

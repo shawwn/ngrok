@@ -102,35 +102,36 @@ func NewTunnel(m *msg.ReqTunnel, ctl *Control) (t *Tunnel, err error) {
 		Logger: log.NewPrefixLogger(),
 	}
 
+	bindTcp := func(protocol string, domain string, port int) error {
+		if t.listener, err = net.ListenTCP("tcp", &net.TCPAddr{IP: net.ParseIP("0.0.0.0"), Port: port}); err != nil {
+			err = t.ctl.conn.Error("Error binding %s listener: %v", protocol, err)
+			return err
+		}
+
+		// create the url
+		addr := t.listener.Addr().(*net.TCPAddr)
+		t.url = fmt.Sprintf("%s://%s:%d", protocol, domain, addr.Port)
+
+		// register it
+		if err = tunnelRegistry.RegisterAndCache(t.url, t); err != nil {
+			// This should never be possible because the OS will
+			// only assign available ports to us.
+			t.listener.Close()
+			err = fmt.Errorf("%s listener bound, but failed to register %s", protocol, t.url)
+			return err
+		}
+
+		go t.listenTcp(t.listener)
+		return nil
+	}
+
 	proto := t.req.Protocol
 	switch proto {
 	case "tcp":
-		bindTcp := func(port int) error {
-			if t.listener, err = net.ListenTCP("tcp", &net.TCPAddr{IP: net.ParseIP("0.0.0.0"), Port: port}); err != nil {
-				err = t.ctl.conn.Error("Error binding TCP listener: %v", err)
-				return err
-			}
-
-			// create the url
-			addr := t.listener.Addr().(*net.TCPAddr)
-			t.url = fmt.Sprintf("tcp://%s:%d", opts.domain, addr.Port)
-
-			// register it
-			if err = tunnelRegistry.RegisterAndCache(t.url, t); err != nil {
-				// This should never be possible because the OS will
-				// only assign available ports to us.
-				t.listener.Close()
-				err = fmt.Errorf("TCP listener bound, but failed to register %s", t.url)
-				return err
-			}
-
-			go t.listenTcp(t.listener)
-			return nil
-		}
 
 		// use the custom remote port you asked for
 		if t.req.RemotePort != 0 {
-			bindTcp(int(t.req.RemotePort))
+			bindTcp("tcp", opts.domain, int(t.req.RemotePort))
 			return
 		}
 
@@ -145,7 +146,7 @@ func NewTunnel(m *msg.ReqTunnel, ctl *Control) (t *Tunnel, err error) {
 				t.ctl.conn.Error("Failed to parse cached url port as integer: %s", portPart)
 			} else {
 				// we have a valid, cached port, let's try to bind with it
-				if bindTcp(port) != nil {
+				if bindTcp("tcp", opts.domain, port) != nil {
 					t.ctl.conn.Warn("Failed to get custom port %d: %v, trying a random one", port, err)
 				} else {
 					// success, we're done
@@ -155,17 +156,58 @@ func NewTunnel(m *msg.ReqTunnel, ctl *Control) (t *Tunnel, err error) {
 		}
 
 		// Bind for TCP connections
-		bindTcp(0)
+		bindTcp("tcp", opts.domain, 0)
 		return
 
 	case "http", "https":
+		// use the custom remote port you asked for
+		if proto == "http" {
+			if t.req.RemotePort != 0 {
+				if t.req.RemotePort > 1023 {
+
+					// Register for specific hostname
+					url := strings.ToLower(strings.TrimSpace(t.req.Hostname))
+					if url == "" {
+						url = opts.domain
+					}
+
+					// Register for specific subdomain
+					subdomain := strings.ToLower(strings.TrimSpace(t.req.Subdomain))
+					if subdomain != "" {
+						url = fmt.Sprintf("%s.%s", subdomain, url)
+					}
+
+					bindTcp(proto, url, int(t.req.RemotePort))
+					return
+				}
+				err = fmt.Errorf("Couldn't map to remote port %d", t.req.RemotePort)
+				return
+			}
+		}
 		l, ok := listeners[proto]
 		if !ok {
 			err = fmt.Errorf("Not listening for %s connections", proto)
 			return
 		}
+		port := l.Addr.(*net.TCPAddr).Port
 
-		if err = registerVhost(t, proto, l.Addr.(*net.TCPAddr).Port); err != nil {
+		//hostname := strings.ToLower(strings.TrimSpace(t.req.Hostname))
+		//		if proto == "http" {
+		//			if t.req.RemotePort != 0 {
+		//				port = int(t.req.RemotePort)
+		//				url := fmt.Sprintf("%s://%s:%s", proto, hostname, port)
+		//				l, ok = listeners[url]
+		//				if !ok {
+		//					listeners[url] = startHttpListener(url, nil)
+		//					if listeners[url] == nil {
+		//						err = fmt.Errorf("Could not map to %s", url)
+		//						return
+		//					}
+		//				}
+		//			}
+		//		}
+
+		if err = registerVhost(t, proto, port); err != nil {
 			return
 		}
 

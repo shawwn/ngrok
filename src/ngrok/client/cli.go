@@ -36,92 +36,109 @@ Examples:
 `
 
 type Options struct {
-	config    string
-	logto     string
-	loglevel  string
-	authtoken string
-	httpauth  string
-	hostname  string
-	protocol  string
-	subdomain string
-	command   string
-	args      []string
+	config     string
+	logto      string
+	loglevel   string
+	authtoken  string
+	httpauth   string
+	hostname   string
+	protocol   string
+	subdomain  string
+	server     string
+	remotePort string
+	command    string
+	args       []string
 }
 
-func ParseArgs() (opts *Options, err error) {
-	flag.Usage = func() {
-		fmt.Fprintf(os.Stderr, usage1, os.Args[0])
-		flag.PrintDefaults()
+func ParseArgs(args []string) (opts *Options, err error) {
+	var flags = flag.NewFlagSet(args[0], flag.PanicOnError)
+	flags.Usage = func() {
+		fmt.Fprintf(os.Stderr, usage1, args[0])
+		flags.PrintDefaults()
 		fmt.Fprintf(os.Stderr, usage2)
 	}
 
-	config := flag.String(
+	config := flags.String(
 		"config",
 		"",
 		"Path to ngrok configuration file. (default: $HOME/.ngrok)")
 
-	logto := flag.String(
+	logto := flags.String(
 		"log",
 		"none",
 		"Write log messages to this file. 'stdout' and 'none' have special meanings")
 
-	loglevel := flag.String(
+	loglevel := flags.String(
 		"log-level",
 		"DEBUG",
 		"The level of messages to log. One of: DEBUG, INFO, WARNING, ERROR")
 
-	authtoken := flag.String(
+	authtoken := flags.String(
 		"authtoken",
 		"",
 		"Authentication token for identifying an ngrok.com account")
 
-	httpauth := flag.String(
+	httpauth := flags.String(
 		"httpauth",
 		"",
 		"username:password HTTP basic auth creds protecting the public tunnel endpoint")
 
-	subdomain := flag.String(
+	subdomain := flags.String(
 		"subdomain",
 		"",
 		"Request a custom subdomain from the ngrok server. (HTTP only)")
 
-	hostname := flag.String(
+	server := flags.String(
+		"server",
+		"",
+		"Connect to the specified host:port")
+
+	remotePort := flags.String(
+		"remotePort",
+		"",
+		"Use the specified remotePort")
+
+	hostname := flags.String(
 		"hostname",
 		"",
 		"Request a custom hostname from the ngrok server. (HTTP only) (requires CNAME of your DNS)")
 
-	protocol := flag.String(
+	protocol := flags.String(
 		"proto",
-		"http+https",
-		"The protocol of the traffic over the tunnel {'http', 'https', 'tcp'} (default: 'http+https')")
+		"http",
+		"The protocol of the traffic over the tunnel {'http', 'https', 'tcp'} (default: 'http')")
 
-	flag.Parse()
+	flags.Parse(args[1:])
 
 	opts = &Options{
-		config:    *config,
-		logto:     *logto,
-		loglevel:  *loglevel,
-		httpauth:  *httpauth,
-		subdomain: *subdomain,
-		protocol:  *protocol,
-		authtoken: *authtoken,
-		hostname:  *hostname,
-		command:   flag.Arg(0),
+		config:     *config,
+		logto:      *logto,
+		loglevel:   *loglevel,
+		httpauth:   *httpauth,
+		subdomain:  *subdomain,
+		server:     *server,
+		remotePort: *remotePort,
+		protocol:   *protocol,
+		authtoken:  *authtoken,
+		hostname:   *hostname,
+		command:    flags.Arg(0),
 	}
 
 	switch opts.command {
 	case "list":
-		opts.args = flag.Args()[1:]
+		opts.args = flags.Args()[1:]
 	case "start":
-		opts.args = flag.Args()[1:]
+		opts.args = flags.Args()[1:]
 	case "start-all":
-		opts.args = flag.Args()[1:]
+		opts.args = flags.Args()[1:]
 	case "version":
 		fmt.Println(version.MajorMinor())
-		os.Exit(0)
+		panic("version")
+		//os.Exit(0)
 	case "help":
-		flag.Usage()
-		os.Exit(0)
+		flags.Usage()
+		panic("help")
+		//os.Exit(0)
 	case "":
 		err = fmt.Errorf("Error: Specify a local port to tunnel to, or " +
 			"an ngrok command.\n\nExample: To expose port 80, run " +
@@ -129,15 +146,15 @@ func ParseArgs() (opts *Options, err error) {
 		return
 
 	default:
-		if len(flag.Args()) > 1 {
+		if len(flags.Args()) > 1 {
 			err = fmt.Errorf("You may only specify one port to tunnel to on the command line, got %d: %v",
-				len(flag.Args()),
-				flag.Args())
+				len(flags.Args()),
+				flags.Args())
 			return
 		}
 
 		opts.command = "default"
-		opts.args = flag.Args()
+		opts.args = flags.Args()
 	}
 
 	return

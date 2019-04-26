@@ -8,7 +8,7 @@ import (
 	"net/url"
 	"ngrok/log"
 	"os"
-	"os/user"
+	//"os/user"
 	"path"
 	"regexp"
 	"strconv"
@@ -69,8 +69,12 @@ func LoadConfiguration(opts *Options) (config *Configuration, err error) {
 
 	// set configuration defaults
 	if config.ServerAddr == "" {
+		config.ServerAddr = opts.server
+	}
+	if config.ServerAddr == "" {
 		config.ServerAddr = defaultServerAddr
 	}
+	config.TrustHostRootCerts = defaultTrustHostRootCerts
 
 	if config.InspectAddr == "" {
 		config.InspectAddr = defaultInspectAddr
@@ -104,6 +108,7 @@ func LoadConfiguration(opts *Options) (config *Configuration, err error) {
 	}
 
 	for name, t := range config.Tunnels {
+		log.Warn("Tunnel %s: %v", name, t)
 		if t == nil || t.Protocols == nil || len(t.Protocols) == 0 {
 			err = fmt.Errorf("Tunnel %s does not specify any protocols to tunnel.", name)
 			return
@@ -139,15 +144,20 @@ func LoadConfiguration(opts *Options) (config *Configuration, err error) {
 		config.AuthToken = opts.authtoken
 	}
 
+	remotePort, err := strconv.Atoi(opts.remotePort)
+	if err != nil {
+		remotePort = 0
+	}
 	switch opts.command {
 	// start a single tunnel, the default, simple ngrok behavior
 	case "default":
 		config.Tunnels = make(map[string]*TunnelConfiguration)
 		config.Tunnels["default"] = &TunnelConfiguration{
-			Subdomain: opts.subdomain,
-			Hostname:  opts.hostname,
-			HttpAuth:  opts.httpauth,
-			Protocols: make(map[string]string),
+			Subdomain:  opts.subdomain,
+			Hostname:   opts.hostname,
+			HttpAuth:   opts.httpauth,
+			RemotePort: uint16(remotePort),
+			Protocols:  make(map[string]string),
 		}
 
 		for _, proto := range strings.Split(opts.protocol, "+") {
@@ -165,7 +175,8 @@ func LoadConfiguration(opts *Options) (config *Configuration, err error) {
 		for name, _ := range config.Tunnels {
 			fmt.Println(name)
 		}
-		os.Exit(0)
+		panic("list")
+		//os.Exit(0)
 
 	// start tunnels
 	case "start":
@@ -202,18 +213,29 @@ func LoadConfiguration(opts *Options) (config *Configuration, err error) {
 }
 
 func defaultPath() string {
-	user, err := user.Current()
 
-	// user.Current() does not work on linux when cross compiling because
-	// it requires CGO; use os.Getenv("HOME") hack until we compile natively
-	homeDir := os.Getenv("HOME")
-	if err != nil {
-		log.Warn("Failed to get user's home directory: %s. Using $HOME: %s", err.Error(), homeDir)
-	} else {
-		homeDir = user.HomeDir
+	var homeDir = os.Getenv("NGROK_HOME")
+	if len(homeDir) > 0 {
+		log.Warn("Using ngrok home %s", homeDir)
+		return homeDir
 	}
 
-	return path.Join(homeDir, ".ngrok")
+	/*
+	   // user.Current() does not work on linux when cross compiling because
+	   // it requires CGO; use os.Getenv("HOME") hack until we compile natively
+	   homeDir = os.Getenv("HOME")
+	   if len(homeDir) <= 0 {
+	     log.Warn("Failed to get user's home directory: %s. Using $HOME: %s", err.Error(), homeDir)
+	   } else {
+	      user, err := user.Current()
+	     homeDir = user.HomeDir
+	   }
+	*/
+
+	// on iOS, just use $HOME/Documents/.ngrok
+	homeDir = path.Join(os.Getenv("HOME"), "Documents", ".ngrok")
+	log.Warn("Home dir is %s", homeDir)
+	return homeDir
 }
 
 func normalizeAddress(addr string, propName string) (string, error) {

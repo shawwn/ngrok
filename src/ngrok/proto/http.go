@@ -227,7 +227,7 @@ func DumpRequestOut(req *http.Request, body bool) ([]byte, error) {
 	// negotiation with our dumpConn and its bytes.Buffer & pipe.
 	// The wire format for https and http are the same, anyway.
 	reqSend := req
-	if req.URL.Scheme == "https" {
+	if req.URL.Scheme == "https" || req.URL.Scheme == "http" {
 		reqSend = new(http.Request)
 		*reqSend = *req
 		reqSend.URL = new(url.URL)
